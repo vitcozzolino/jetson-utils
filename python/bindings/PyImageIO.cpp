@@ -26,6 +26,51 @@
 #include "loadImage.h"
 
 
+// PyImageIO_LoadRGB
+PyObject* PyImageIO_LoadRGBAFromMemory( PyObject* self, PyObject* args )
+{
+	unsigned char* img = NULL;
+	int width = width;
+	int height = height;
+	int channels = channels;
+
+	if( !PyArg_ParseTuple(args, "y*iii", &img, &width, &height, &channels) )
+	{
+		PyErr_SetString(PyExc_Exception, LOG_PY_UTILS "loadImageRGB() failed to parse argument");
+		return NULL;
+	}
+
+	// load the image
+	void* cpuPtr = NULL;
+	void* gpuPtr = NULL;
+
+	if( !loadImageRGBAFromMemory(img, (float4**)&cpuPtr, (float4**)&gpuPtr, &width, &height) )
+	{
+		PyErr_SetString(PyExc_Exception, LOG_PY_UTILS "loadImageRGB() failed to load the image");
+		return NULL;
+	}
+
+	// register memory container
+	PyObject* capsule = PyCUDA_RegisterMappedMemory(cpuPtr, gpuPtr);
+
+	if( !capsule )
+		return NULL;
+
+	// create dimension objects
+	PyObject* pyWidth  = PYLONG_FROM_LONG(width);
+	PyObject* pyHeight = PYLONG_FROM_LONG(height);
+
+	// return tuple
+	PyObject* tuple = PyTuple_Pack(3, capsule, pyWidth, pyHeight);
+
+	Py_DECREF(capsule);
+	Py_DECREF(pyWidth);
+	Py_DECREF(pyHeight);
+
+	return tuple;
+}
+
+
 // PyImageIO_LoadRGBA
 PyObject* PyImageIO_LoadRGBA( PyObject* self, PyObject* args )
 {
@@ -36,7 +81,7 @@ PyObject* PyImageIO_LoadRGBA( PyObject* self, PyObject* args )
 		PyErr_SetString(PyExc_Exception, LOG_PY_UTILS "loadImageRGBA() failed to parse filename argument");
 		return NULL;
 	}
-		
+
 	// load the image
 	void* cpuPtr = NULL;
 	void* gpuPtr = NULL;
@@ -49,7 +94,7 @@ PyObject* PyImageIO_LoadRGBA( PyObject* self, PyObject* args )
 		PyErr_SetString(PyExc_Exception, LOG_PY_UTILS "loadImageRGBA() failed to load the image");
 		return NULL;
 	}
-		
+
 	// register memory container
 	PyObject* capsule = PyCUDA_RegisterMappedMemory(cpuPtr, gpuPtr);
 
@@ -106,14 +151,14 @@ PyObject* PyImageIO_SaveRGBA( PyObject* self, PyObject* args, PyObject* kwds )
 		PyErr_SetString(PyExc_Exception, LOG_PY_UTILS "saveImageRGBA() failed to get input image pointer from PyCapsule container");
 		return NULL;
 	}
-		
+
 	// save the image
 	if( !saveImageRGBA(filename, (float4*)img, width, height, max_pixel) )
 	{
 		PyErr_SetString(PyExc_Exception, LOG_PY_UTILS "saveImageRGBA() failed to save the image");
 		return NULL;
 	}
-		
+
 	// return void
 	Py_RETURN_NONE;
 }
@@ -121,10 +166,11 @@ PyObject* PyImageIO_SaveRGBA( PyObject* self, PyObject* args, PyObject* kwds )
 
 //-------------------------------------------------------------------------------
 
-static PyMethodDef pyImageIO_Functions[] = 
+static PyMethodDef pyImageIO_Functions[] =
 {
 	{ "loadImageRGBA", (PyCFunction)PyImageIO_LoadRGBA, METH_VARARGS, "Load an image from disk into GPU memory as float4 RGBA" },
-	{ "saveImageRGBA", (PyCFunction)PyImageIO_SaveRGBA, METH_VARARGS|METH_KEYWORDS, "Save a float4 RGBA image to disk" },	
+	{ "loadImageRGBAFromMemory", (PyCFunction)PyImageIO_LoadRGBAFromMemory, METH_VARARGS, "Load an image from buffer into GPU memory as float4 RGBA" },
+	{ "saveImageRGBA", (PyCFunction)PyImageIO_SaveRGBA, METH_VARARGS|METH_KEYWORDS, "Save a float4 RGBA image to disk" },
 	{NULL}  /* Sentinel */
 };
 
@@ -139,7 +185,6 @@ bool PyImageIO_RegisterTypes( PyObject* module )
 {
 	if( !module )
 		return false;
-	
+
 	return true;
 }
-

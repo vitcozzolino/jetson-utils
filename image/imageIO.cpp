@@ -19,7 +19,7 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
- 
+
 #include "imageIO.h"
 #include "cudaMappedMemory.h"
 #include "filesystem.h"
@@ -58,13 +58,13 @@ bool saveImageRGBA( const char* filename, float4* cpu, int width, int height, fl
 		printf(LOG_IMAGE "saveImageRGBA() - invalid parameter\n");
 		return false;
 	}
-	
+
 	if( quality < 1 )
 		quality = 1;
 
 	if( quality > 100 )
 		quality = 100;
-	
+
 	// allocate memory for the uint8 image
 	const size_t stride = width * sizeof(unsigned char) * 4;
 	const size_t size   = stride * height;
@@ -120,7 +120,7 @@ bool saveImageRGBA( const char* filename, float4* cpu, int width, int height, fl
 
 		if( quality < 0 )
 			quality = 0;
-		
+
 		if( quality > 9 )
 			quality = 9;
 
@@ -162,6 +162,84 @@ bool saveImageRGBA( const char* filename, float4* cpu, int width, int height, fl
 	return true;
 }
 
+// loadImageMEM (internal)
+static unsigned char* loadImageMEM( const unsigned char* buffer, int* width, int* height, int* channels )
+{
+	// validate parameters
+	if( !buffer || !width || !height || !channels )
+	{
+		printf(LOG_IMAGE "loadImageMEM() - invalid parameter(s)\n");
+		return NULL;
+	}
+
+	// load original image
+	int imgWidth = *width;
+	int imgHeight = *height;
+	int imgChannels = *channels;
+
+	const size_t imgSize = imgWidth * imgHeight * sizeof(unsigned char) * imgChannels;
+
+	// fwrite(buffer, 25, 1, stdout);
+
+	unsigned char* img = stbi_load_from_memory(buffer, imgSize, &imgWidth, &imgHeight, &imgChannels, 0);
+
+	if( !img )
+	{
+		printf(LOG_IMAGE "(error:  %s)\n", stbi_failure_reason());
+		return NULL;
+	}
+
+	// validate dimensions for sanity
+	printf(LOG_IMAGE "loaded image (%i x %i, %i channels)\n", imgWidth, imgHeight, imgChannels);
+
+	if( imgWidth < 0 || imgHeight < 0 || imgChannels < 0 || imgChannels > 4 )
+	{
+		printf(LOG_IMAGE "Image has invalid dimensions\n");
+		return NULL;
+	}
+
+	// if the user provided a desired size, resize the image if necessary
+	const int resizeWidth  = *width;
+	const int resizeHeight = *height;
+
+	if( resizeWidth > 0 && resizeHeight > 0 && resizeWidth != imgWidth && resizeHeight != imgHeight )
+	{
+		unsigned char* img_org = img;
+
+		printf(LOG_IMAGE "resizing image to %ix%i\n", resizeWidth, resizeHeight);
+
+		// allocate memory for the resized image
+		img = (unsigned char*)malloc(resizeWidth * resizeHeight * imgChannels * sizeof(unsigned char));
+
+		if( !img )
+		{
+			printf(LOG_IMAGE "failed to allocated memory to resize to image %ix%i\n", resizeWidth, resizeHeight);
+			free(img_org);
+			return NULL;
+		}
+
+		// resize the original image
+		if( !stbir_resize_uint8(img_org, imgWidth, imgHeight, 0,
+						    img, resizeWidth, resizeHeight, 0, imgChannels) )
+		{
+			printf(LOG_IMAGE "failed to resize image to %ix%i\n", resizeWidth, resizeHeight);
+			free(img_org);
+			return NULL;
+		}
+
+		// update resized dimensions
+		imgWidth  = resizeWidth;
+		imgHeight = resizeHeight;
+
+		free(img_org);
+	}
+
+	*width = imgWidth;
+	*height = imgHeight;
+	*channels = imgChannels;
+
+	return img;
+}
 
 // loadImageIO (internal)
 static unsigned char* loadImageIO( const char* filename, int* width, int* height, int* channels )
@@ -172,7 +250,7 @@ static unsigned char* loadImageIO( const char* filename, int* width, int* height
 		printf(LOG_IMAGE "loadImageIO() - invalid parameter(s)\n");
 		return NULL;
 	}
-	
+
 	// verify file path
 	const std::string path = locateFile(filename);
 
@@ -221,7 +299,7 @@ static unsigned char* loadImageIO( const char* filename, int* width, int* height
 		if( !img )
 		{
 			printf(LOG_IMAGE "failed to allocated memory to resize '%s' to %ix%i\n", filename, resizeWidth, resizeHeight);
-			free(img_org);		
+			free(img_org);
 			return NULL;
 		}
 
@@ -239,7 +317,7 @@ static unsigned char* loadImageIO( const char* filename, int* width, int* height
 		imgHeight = resizeHeight;
 
 		free(img_org);
-	}	
+	}
 
 	*width = imgWidth;
 	*height = imgHeight;
@@ -265,10 +343,10 @@ bool loadImageRGBA( const char* filename, float4** cpu, float4** gpu, int* width
 	int imgChannels = 0;
 
 	unsigned char* img = loadImageIO(filename, &imgWidth, &imgHeight, &imgChannels);
-	
+
 	if( !img )
 		return false;
-	
+
 
 	// allocate CUDA buffer for the image
 	const size_t imgSize = imgWidth * imgHeight * sizeof(float) * 4;
@@ -282,7 +360,7 @@ bool loadImageRGBA( const char* filename, float4** cpu, float4** gpu, int* width
 
 	// convert uint8 image to float4
 	float4* cpuPtr = *cpu;
-	
+
 	for( int y=0; y < imgHeight; y++ )
 	{
 		const size_t yOffset = y * imgWidth * imgChannels * sizeof(unsigned char);
@@ -293,16 +371,16 @@ bool loadImageRGBA( const char* filename, float4** cpu, float4** gpu, int* width
 			#define SET_PIXEL_FLOAT4(r,g,b,a) cpuPtr[y*imgWidth+x] = make_float4(r,g,b,a)
 
 			const size_t offset = yOffset + x * imgChannels * sizeof(unsigned char);
-					
+
 			switch(imgChannels)
 			{
-				case 1:	
+				case 1:
 				{
 					const float grey = GET_PIXEL(0);
-					SET_PIXEL_FLOAT4(grey - mean.x, grey - mean.y, grey - mean.z, 255.0f - mean.w); 
+					SET_PIXEL_FLOAT4(grey - mean.x, grey - mean.y, grey - mean.z, 255.0f - mean.w);
 					break;
 				}
-				case 2:	
+				case 2:
 				{
 					const float grey = GET_PIXEL(0);
 					SET_PIXEL_FLOAT4(grey - mean.x, grey - mean.y, grey - mean.z, GET_PIXEL(1) - mean.w);
@@ -321,10 +399,166 @@ bool loadImageRGBA( const char* filename, float4** cpu, float4** gpu, int* width
 			}
 		}
 	}
-	
+
 	*width  = imgWidth;
 	*height = imgHeight;
-	
+
+	free(img);
+	return true;
+}
+
+// loadImageRGBA
+bool loadImageRGBAFromMemory( const unsigned char* buffer, float4** cpu, float4** gpu, int* width, int* height, const float4& mean )
+{
+	// validate parameters
+	if( !buffer || !cpu || !gpu || !width || !height )
+	{
+		printf(LOG_IMAGE "loadImageRGBA() - invalid parameter(s)\n");
+		return NULL;
+	}
+
+	// attempt to load the data from disk
+	int imgWidth = *width;
+	int imgHeight = *height;
+	int imgChannels = 4;
+
+	unsigned char* img = loadImageMEM(buffer, &imgWidth, &imgHeight, &imgChannels);
+
+	if( !img )
+		return false;
+
+
+	// allocate CUDA buffer for the image
+	const size_t imgSize = imgWidth * imgHeight * sizeof(float) * 4;
+
+	if( !cudaAllocMapped((void**)cpu, (void**)gpu, imgSize) )
+	{
+		printf(LOG_CUDA "failed to allocate %zu bytes for image \n", imgSize);
+		return false;
+	}
+
+
+	// convert uint8 image to float4
+	float4* cpuPtr = *cpu;
+
+	for( int y=0; y < imgHeight; y++ )
+	{
+		const size_t yOffset = y * imgWidth * imgChannels * sizeof(unsigned char);
+
+		for( int x=0; x < imgWidth; x++ )
+		{
+			#define GET_PIXEL(channel)	    float(img[offset + channel])
+			#define SET_PIXEL_FLOAT4(r,g,b,a) cpuPtr[y*imgWidth+x] = make_float4(r,g,b,a)
+
+			const size_t offset = yOffset + x * imgChannels * sizeof(unsigned char);
+
+			switch(imgChannels)
+			{
+				case 1:
+				{
+					const float grey = GET_PIXEL(0);
+					SET_PIXEL_FLOAT4(grey - mean.x, grey - mean.y, grey - mean.z, 255.0f - mean.w);
+					break;
+				}
+				case 2:
+				{
+					const float grey = GET_PIXEL(0);
+					SET_PIXEL_FLOAT4(grey - mean.x, grey - mean.y, grey - mean.z, GET_PIXEL(1) - mean.w);
+					break;
+				}
+				case 3:
+				{
+					SET_PIXEL_FLOAT4(GET_PIXEL(0) - mean.x, GET_PIXEL(1) - mean.y, GET_PIXEL(2) - mean.z, 255.0f - mean.w);
+					break;
+				}
+				case 4:
+				{
+					SET_PIXEL_FLOAT4(GET_PIXEL(0) - mean.x, GET_PIXEL(1) - mean.y, GET_PIXEL(2) - mean.z, GET_PIXEL(3) - mean.w);
+					break;
+				}
+			}
+		}
+	}
+
+	*width  = imgWidth;
+	*height = imgHeight;
+
+	free(img);
+	return true;
+}
+
+// loadImageRGB
+bool loadImageRGB_mem( const unsigned char* buffer, float3** cpu, float3** gpu, int* width, int* height, int* channels, const float3& mean )
+{
+	// validate parameters
+	if( !buffer || !cpu || !gpu || !width || !height )
+	{
+		printf(LOG_IMAGE "loadImageRGB_mem() - invalid parameter(s)\n");
+		return NULL;
+	}
+
+	// attempt to load the data from disk
+	int imgWidth = *width;
+	int imgHeight = *height;
+	int imgChannels = *channels;
+
+	unsigned char* img = loadImageMEM(buffer, &imgWidth, &imgHeight, &imgChannels);
+
+	if( !img )
+		return false;
+
+	// allocate CUDA buffer for the image
+	const size_t imgSize = imgWidth * imgHeight * sizeof(float) * imgChannels;
+
+	printf(LOG_IMAGE "Image size %zu\n", imgSize);
+
+	if( !cudaAllocMapped((void**)cpu, (void**)gpu, imgSize) )
+	{
+		printf(LOG_CUDA "failed to allocate %zu bytes\n", imgSize);
+		return false;
+	}
+
+
+	// convert uint8 image to float4
+	float3* cpuPtr = *cpu;
+
+	for( int y=0; y < imgHeight; y++ )
+	{
+		const size_t yOffset = y * imgWidth * imgChannels * sizeof(unsigned char);
+
+		for( int x=0; x < imgWidth; x++ )
+		{
+			#define SET_PIXEL_FLOAT3(r,g,b) cpuPtr[y*imgWidth+x] = make_float3(r,g,b)
+
+			const size_t offset = yOffset + x * imgChannels * sizeof(unsigned char);
+
+			switch(imgChannels)
+			{
+				case 1:
+				{
+					const float grey = GET_PIXEL(0);
+					SET_PIXEL_FLOAT3(grey - mean.x, grey - mean.y, grey - mean.z);
+					break;
+				}
+				case 2:
+				{
+					const float grey = GET_PIXEL(0);
+					SET_PIXEL_FLOAT3(grey - mean.x, grey - mean.y, grey - mean.z);
+					break;
+				}
+				case 3:
+				case 4:
+				{
+					SET_PIXEL_FLOAT3(GET_PIXEL(0) - mean.x, GET_PIXEL(1) - mean.y, GET_PIXEL(2) - mean.z);
+					break;
+				}
+			}
+		}
+	}
+
+	*width  = imgWidth;
+	*height = imgHeight;
+
 	free(img);
 	return true;
 }
@@ -346,10 +580,10 @@ bool loadImageRGB( const char* filename, float3** cpu, float3** gpu, int* width,
 	int imgChannels = 0;
 
 	unsigned char* img = loadImageIO(filename, &imgWidth, &imgHeight, &imgChannels);
-	
+
 	if( !img )
 		return false;
-	
+
 
 	// allocate CUDA buffer for the image
 	const size_t imgSize = imgWidth * imgHeight * sizeof(float) * 3;
@@ -363,7 +597,7 @@ bool loadImageRGB( const char* filename, float3** cpu, float3** gpu, int* width,
 
 	// convert uint8 image to float4
 	float3* cpuPtr = *cpu;
-	
+
 	for( int y=0; y < imgHeight; y++ )
 	{
 		const size_t yOffset = y * imgWidth * imgChannels * sizeof(unsigned char);
@@ -373,16 +607,16 @@ bool loadImageRGB( const char* filename, float3** cpu, float3** gpu, int* width,
 			#define SET_PIXEL_FLOAT3(r,g,b) cpuPtr[y*imgWidth+x] = make_float3(r,g,b)
 
 			const size_t offset = yOffset + x * imgChannels * sizeof(unsigned char);
-					
+
 			switch(imgChannels)
 			{
-				case 1:	
+				case 1:
 				{
 					const float grey = GET_PIXEL(0);
-					SET_PIXEL_FLOAT3(grey - mean.x, grey - mean.y, grey - mean.z); 
+					SET_PIXEL_FLOAT3(grey - mean.x, grey - mean.y, grey - mean.z);
 					break;
 				}
-				case 2:	
+				case 2:
 				{
 					const float grey = GET_PIXEL(0);
 					SET_PIXEL_FLOAT3(grey - mean.x, grey - mean.y, grey - mean.z);
@@ -397,10 +631,10 @@ bool loadImageRGB( const char* filename, float3** cpu, float3** gpu, int* width,
 			}
 		}
 	}
-	
+
 	*width  = imgWidth;
 	*height = imgHeight;
-	
+
 	free(img);
 	return true;
 }
@@ -422,10 +656,10 @@ bool loadImageBGR( const char* filename, float3** cpu, float3** gpu, int* width,
 	int imgChannels = 0;
 
 	unsigned char* img = loadImageIO(filename, &imgWidth, &imgHeight, &imgChannels);
-	
+
 	if( !img )
 		return false;
-	
+
 
 	// allocate CUDA buffer for the image
 	const size_t imgSize = imgWidth * imgHeight * sizeof(float) * 3;
@@ -439,7 +673,7 @@ bool loadImageBGR( const char* filename, float3** cpu, float3** gpu, int* width,
 
 	// convert uint8 image to float4
 	float3* cpuPtr = *cpu;
-	
+
 	for( int y=0; y < imgHeight; y++ )
 	{
 		const size_t yOffset = y * imgWidth * imgChannels * sizeof(unsigned char);
@@ -449,16 +683,16 @@ bool loadImageBGR( const char* filename, float3** cpu, float3** gpu, int* width,
 			#define SET_PIXEL_FLOAT3(r,g,b) cpuPtr[y*imgWidth+x] = make_float3(r,g,b)
 
 			const size_t offset = yOffset + x * imgChannels * sizeof(unsigned char);
-					
+
 			switch(imgChannels)
 			{
-				case 1:	
+				case 1:
 				{
 					const float grey = GET_PIXEL(0);
-					SET_PIXEL_FLOAT3(grey - mean.x, grey - mean.y, grey - mean.z); 
+					SET_PIXEL_FLOAT3(grey - mean.x, grey - mean.y, grey - mean.z);
 					break;
 				}
-				case 2:	
+				case 2:
 				{
 					const float grey = GET_PIXEL(0);
 					SET_PIXEL_FLOAT3(grey - mean.x, grey - mean.y, grey - mean.z);
@@ -473,10 +707,10 @@ bool loadImageBGR( const char* filename, float3** cpu, float3** gpu, int* width,
 			}
 		}
 	}
-	
+
 	*width  = imgWidth;
 	*height = imgHeight;
-	
+
 	free(img);
 	return true;
 }
@@ -487,8 +721,7 @@ bool loadImageBGR( const char* filename, float3** cpu, float3** gpu, int* width,
 	// note:  caffe/GIE is band-sequential (as opposed to the typical Band Interleaved by Pixel)
 	const uint32_t imgPixels = imgWidth * imgHeight;
 
-	cpuPtr[imgPixels * 0 + y * imgWidth + x] = px.x; 
-	cpuPtr[imgPixels * 1 + y * imgWidth + x] = px.y; 
-	cpuPtr[imgPixels * 2 + y * imgWidth + x] = px.z; 
+	cpuPtr[imgPixels * 0 + y * imgWidth + x] = px.x;
+	cpuPtr[imgPixels * 1 + y * imgWidth + x] = px.y;
+	cpuPtr[imgPixels * 2 + y * imgWidth + x] = px.z;
 */
-

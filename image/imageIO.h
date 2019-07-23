@@ -19,7 +19,7 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
- 
+
 #ifndef __IMAGE_IO_H_
 #define __IMAGE_IO_H_
 
@@ -31,7 +31,7 @@
  * Load a color image from disk into CUDA memory with alpha, in float4 RGBA format with pixel values 0-255.
  *
  * Supported image file formats by loadImageRGBA() include:
- * 
+ *
  *   - JPEG
  *   - PNG
  *   - TGA
@@ -58,16 +58,16 @@
  *                       If the height variable contains a non-zero value when it's passed in, the image is resized to this desired height.
  *                       Otherwise if the value of height is 0, the image will be loaded with it's dimensions from the file on disk.
  * @param[in] mean_pixel Mean pixel subtraction is applied using this specified color (mean pixel subtraction is typically performed before
- *                       processing an image with neural networks).  By default the value is zero, so no mean pixel subtraction is done.  
+ *                       processing an image with neural networks).  By default the value is zero, so no mean pixel subtraction is done.
  * @ingroup image
  */
 bool loadImageRGBA( const char* filename, float4** cpu, float4** gpu, int* width, int* height, const float4& mean_pixel=make_float4(0,0,0,0) );
-
+bool loadImageRGBAFromMemory( const unsigned char* buffer, float4** cpu, float4** gpu, int* width, int* height, const float4& mean_pixel=make_float4(0,0,0,0) );
 
 /**
  * Save a float4 RGBA image to disk.
  *
- * Supported image file formats by saveImageRGBA() include:  
+ * Supported image file formats by saveImageRGBA() include:
  *
  *   - JPEG
  *   - PNG
@@ -85,7 +85,7 @@ bool loadImageRGBA( const char* filename, float4** cpu, float4** gpu, int* width
  * @param quality Indicates the compression quality level (between 1 and 100) to be applied for JPEG and PNG images.
  *                A level of 1 correponds to reduced quality and maximum compression.
  *                A level of 100 corresponds to maximum quality and reduced compression.
- *                By default a level of 100 is used for maximum quality and reduced compression. 
+ *                By default a level of 100 is used for maximum quality and reduced compression.
  *                Note that this quality parameter only applies to JPEG and PNG, other formats will ignore it.
  * @ingroup image
  */
@@ -96,7 +96,7 @@ bool saveImageRGBA( const char* filename, float4* cpu, int width, int height, fl
  * Load a color image from disk into CUDA memory, in float3 RGB format with pixel values 0-255.
  *
  * Supported image file formats by loadImageRGB include:
- * 
+ *
  *   - JPEG
  *   - PNG
  *   - TGA
@@ -123,17 +123,17 @@ bool saveImageRGBA( const char* filename, float4* cpu, int width, int height, fl
  *                       If the height variable contains a non-zero value when it's passed in, the image is resized to this desired height.
  *                       Otherwise if the value of height is 0, the image will be loaded with it's dimensions from the file on disk.
  * @param[in] mean_pixel Mean pixel subtraction is applied using this specified color (mean pixel subtraction is typically performed before
- *                       processing an image with neural networks).  By default the value is zero, so no mean pixel subtraction is done.  
+ *                       processing an image with neural networks).  By default the value is zero, so no mean pixel subtraction is done.
  * @ingroup image
  */
 bool loadImageRGB( const char* filename, float3** cpu, float3** gpu, int* width, int* height, const float3& mean_pixel=make_float3(0,0,0) );
-
+bool loadImageRGB_mem( const unsigned char* buffer, float3** cpu, float3** gpu, int* width, int* height, int* channels, const float3& mean_pixel=make_float3(0,0,0) );
 
 /**
  * Load a color image from disk into CUDA memory, in float3 BGR format with pixel values 0-255.
  *
  * Supported image file formats by loadImageBGR() include:
- * 
+ *
  *   - JPEG
  *   - PNG
  *   - TGA
@@ -160,7 +160,7 @@ bool loadImageRGB( const char* filename, float3** cpu, float3** gpu, int* width,
  *                       If the height variable contains a non-zero value when it's passed in, the image is resized to this desired height.
  *                       Otherwise if the value of height is 0, the image will be loaded with it's dimensions from the file on disk.
  * @param[in] mean_pixel Mean pixel subtraction is applied using this specified color (mean pixel subtraction is typically performed before
- *                       processing an image with neural networks).  By default the value is zero, so no mean pixel subtraction is done.  
+ *                       processing an image with neural networks).  By default the value is zero, so no mean pixel subtraction is done.
  * @ingroup image
  */
 bool loadImageBGR( const char* filename, float3** cpu, float3** gpu, int* width, int* height, const float3& mean=make_float3(0,0,0) );
