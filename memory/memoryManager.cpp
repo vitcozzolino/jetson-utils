@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2017, NVIDIA CORPORATION. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -20,34 +20,47 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef __PYTHON_BINDINGS_CUDA__
-#define __PYTHON_BINDINGS_CUDA__
+#include "memoryManager.h"
+#include "cudaMappedMemory.h"
 
-#include "PyUtils.h"
-
-// Name of memory capsules
-#define CUDA_MALLOC_MEMORY_CAPSULE	PY_UTILS_MODULE_NAME ".cudaMalloc"
-#define CUDA_MAPPED_MEMORY_CAPSULE PY_UTILS_MODULE_NAME ".cudaAllocMapped"
-
-// Create memory capsule
-PyObject* PyCUDA_RegisterMemory( void* gpuPtr, bool freeOnDelete=true);
-
-// Create mapped memory capsule
-PyObject* PyCUDA_RegisterMappedMemory( void* cpuPtr, void* gpuPtr, bool freeOnDelete=true );
-
-// Register functions
-PyMethodDef* PyCUDA_RegisterFunctions();
-
-// Register types
-bool PyCUDA_RegisterTypes( PyObject* module );
-
-// Retrieve pointer from capsule object
-inline void* PyCUDA_GetPointer( PyObject* capsule )
+memoryManager* memoryManager::Create( uint8_t threshold )
 {
-	if( PyCapsule_IsValid(capsule, CUDA_MAPPED_MEMORY_CAPSULE) != 0 )
-		return PyCapsule_GetPointer(capsule, CUDA_MAPPED_MEMORY_CAPSULE);
-	else if( PyCapsule_IsValid(capsule, CUDA_MALLOC_MEMORY_CAPSULE) )
-		return PyCapsule_GetPointer(capsule, CUDA_MALLOC_MEMORY_CAPSULE);
+	memoryManager* mm = new memoryManager();
+
+	mm->threshold = threshold;
+	mm->usedPointerList = new std::list<usedPointer>;
+
+	return mm;
 }
 
-#endif
+int memoryManager::addUsedPointer( void* ptr ) {
+
+	usedPointer t;
+	t.ptr = ptr;
+
+	usedPointerList->push_back(t);
+
+	return 0;
+}
+
+bool memoryManager::checkThreshold(){
+	return usedPointerList->size() >= threshold;
+}
+
+int memoryManager::deallocatePointers( )
+{
+	if(checkThreshold()){
+		printf("Cleaning memory procedure started\n");
+		for (std::list<usedPointer>::iterator it=usedPointerList->begin(); it != usedPointerList->end(); ++it) {
+			if( CUDA_FAILED(cudaFreeHost(it->ptr)) )
+			{
+				printf("failed to free CUDA mapped memory with cudaFreeHost()\n");
+				return -1;
+			}
+		}
+		// printf("Cleaning memory");
+		usedPointerList->clear();
+	}
+
+	return 0;
+}

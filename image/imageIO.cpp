@@ -413,7 +413,7 @@ bool loadImageRGBAFromMemory( const unsigned char* buffer, float4** cpu, float4*
 	// validate parameters
 	if( !buffer || !cpu || !gpu || !width || !height )
 	{
-		printf(LOG_IMAGE "loadImageRGBA() - invalid parameter(s)\n");
+		printf(LOG_IMAGE "loadImageRGBAFromMemory() - invalid parameter(s)\n");
 		return NULL;
 	}
 

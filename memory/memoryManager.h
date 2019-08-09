@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2018, NVIDIA CORPORATION. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -20,34 +20,50 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#ifndef __PYTHON_BINDINGS_CUDA__
-#define __PYTHON_BINDINGS_CUDA__
+#ifndef __MEMORY_MANAGER_H__
+#define __MEMORY_MANAGER_H__
 
-#include "PyUtils.h"
+#include <list>
+#include <math.h>
+#include <stdint.h>
 
-// Name of memory capsules
-#define CUDA_MALLOC_MEMORY_CAPSULE	PY_UTILS_MODULE_NAME ".cudaMalloc"
-#define CUDA_MAPPED_MEMORY_CAPSULE PY_UTILS_MODULE_NAME ".cudaAllocMapped"
-
-// Create memory capsule
-PyObject* PyCUDA_RegisterMemory( void* gpuPtr, bool freeOnDelete=true);
-
-// Create mapped memory capsule
-PyObject* PyCUDA_RegisterMappedMemory( void* cpuPtr, void* gpuPtr, bool freeOnDelete=true );
-
-// Register functions
-PyMethodDef* PyCUDA_RegisterFunctions();
-
-// Register types
-bool PyCUDA_RegisterTypes( PyObject* module );
-
-// Retrieve pointer from capsule object
-inline void* PyCUDA_GetPointer( PyObject* capsule )
+typedef struct _usedPointer
 {
-	if( PyCapsule_IsValid(capsule, CUDA_MAPPED_MEMORY_CAPSULE) != 0 )
-		return PyCapsule_GetPointer(capsule, CUDA_MAPPED_MEMORY_CAPSULE);
-	else if( PyCapsule_IsValid(capsule, CUDA_MALLOC_MEMORY_CAPSULE) )
-		return PyCapsule_GetPointer(capsule, CUDA_MALLOC_MEMORY_CAPSULE);
-}
+		void* ptr;
+} usedPointer;
+
+class memoryManager
+{
+	public:
+
+		static memoryManager& getInstance()
+		{
+				static memoryManager    instance; // Guaranteed to be destroyed.
+															// Instantiated on first use.
+				return instance;
+		}
+		std::list<usedPointer>* usedPointerList;
+		uint8_t threshold;
+
+		static memoryManager* Create( uint8_t threshold );
+		int addUsedPointer( void* ptr );
+		int deallocatePointers();
+
+		memoryManager(memoryManager const&)               = delete;
+		void operator=(memoryManager const&)  = delete;
+
+	private:
+		memoryManager()
+		{
+			threshold = 64;
+			usedPointerList = new std::list<usedPointer>;
+		}
+
+	protected:
+
+		bool checkThreshold();
+
+
+};
 
 #endif

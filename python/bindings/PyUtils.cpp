@@ -39,23 +39,23 @@ static PyMethodDef pyUtilsFunctions[pyUtilsMaxFunctions];
 void PyUtils_AddFunctions( PyMethodDef* functions )
 {
 	uint32_t count = 0;
-		
+
 	if( !functions )
 		return;
-	
+
 	while(true)
 	{
 		if( !functions[count].ml_name || !functions[count].ml_meth )
 			break;
-		
+
 		if( pyUtilsNumFunctions >= pyUtilsMaxFunctions - 1 )
 		{
 			printf(LOG_PY_UTILS "exceeded max number of functions to register (%u)\n", pyUtilsMaxFunctions);
 			return;
 		}
-		
+
 		memcpy(pyUtilsFunctions + pyUtilsNumFunctions, functions + count, sizeof(PyMethodDef));
-		
+
 		pyUtilsNumFunctions++;
 		count++;
 	}
@@ -66,10 +66,10 @@ void PyUtils_AddFunctions( PyMethodDef* functions )
 bool PyUtils_RegisterFunctions()
 {
 	printf(LOG_PY_UTILS "registering module functions...\n");
-	
+
 	// zero the master list of functions, so it end with NULL sentinel
 	memset(pyUtilsFunctions, 0, sizeof(PyMethodDef) * pyUtilsMaxFunctions);
-	
+
 	// add functions to the master list
 	PyUtils_AddFunctions(PyGL_RegisterFunctions());
 	PyUtils_AddFunctions(PyCUDA_RegisterFunctions());
@@ -86,7 +86,7 @@ bool PyUtils_RegisterFunctions()
 bool PyUtils_RegisterTypes( PyObject* module )
 {
 	printf(LOG_PY_UTILS "registering module types...\n");
-	
+
 	if( !PyGL_RegisterTypes(module) )
 		printf(LOG_PY_UTILS "failed to register OpenGL types\n");
 
@@ -119,24 +119,24 @@ PyMODINIT_FUNC
 PyInit_jetson_utils_python(void)
 {
 	printf(LOG_PY_UTILS "initializing Python %i.%i bindings...\n", PY_MAJOR_VERSION, PY_MINOR_VERSION);
-	
+
 	// register functions
 	if( !PyUtils_RegisterFunctions() )
 		printf(LOG_PY_UTILS "failed to register module functions\n");
-	
+
 	// create the module
 	PyObject* module = PyModule_Create(&pyUtilsModuleDef);
-	
+
 	if( !module )
 	{
 		printf(LOG_PY_UTILS "PyModule_Create() failed\n");
 		return NULL;
 	}
-	
+
 	// register types
 	if( !PyUtils_RegisterTypes(module) )
 		printf(LOG_PY_UTILS "failed to register module types\n");
-	
+
 	printf(LOG_PY_UTILS "done Python %i.%i binding initialization\n", PY_MAJOR_VERSION, PY_MINOR_VERSION);
 	return module;
 }
@@ -146,26 +146,24 @@ PyMODINIT_FUNC
 initjetson_utils_python(void)
 {
 	printf(LOG_PY_UTILS "initializing Python %i.%i bindings...\n", PY_MAJOR_VERSION, PY_MINOR_VERSION);
-	
+
 	// register functions
 	if( !PyUtils_RegisterFunctions() )
 		printf(LOG_PY_UTILS "failed to register module functions\n");
-	
+
 	// create the module
 	PyObject* module = Py_InitModule("jetson_utils_python", pyUtilsFunctions);
-	
+
 	if( !module )
 	{
 		printf(LOG_PY_UTILS "Py_InitModule() failed\n");
 		return;
 	}
-	
+
 	// register types
 	if( !PyUtils_RegisterTypes(module) )
 		printf(LOG_PY_UTILS "failed to register module types\n");
-	
+
 	printf(LOG_PY_UTILS "done Python %i.%i binding initialization\n", PY_MAJOR_VERSION, PY_MINOR_VERSION);
 }
 #endif
-
-

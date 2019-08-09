@@ -24,7 +24,101 @@
 
 #include "cudaMappedMemory.h"
 #include "cudaFont.h"
+#include "memoryManager.h"
 
+typedef struct {
+	PyObject_HEAD
+	memoryManager* mm;
+} PyCUDA_MemoryManager_Object;
+
+static int PyCUDA_MemoryManager_Init( PyCUDA_MemoryManager_Object* self, PyObject* args, PyObject* kwds )
+{
+	printf(LOG_PY_UTILS "PyCUDA_MemoryManager_Init()\n");
+
+	// parse arguments
+	int threshold = 64;
+
+	static char* kwlist[] = {"threshold", NULL};
+
+	if( !PyArg_ParseTupleAndKeywords(args, kwds, "|i", kwlist, &threshold))
+	{
+		PyErr_SetString(PyExc_Exception, LOG_PY_UTILS "PyCUDA_MemoryManager.__init()__ failed to parse args tuple");
+		return -1;
+	}
+
+	// create the font
+	memoryManager* mm = memoryManager::Create(threshold);
+
+	if( !mm )
+	{
+		PyErr_SetString(PyExc_Exception, LOG_PY_UTILS "failed to create PyCUDA_MemoryManager object");
+		return -1;
+	}
+
+	self->mm = mm;
+	return 0;
+}
+
+static PyObject* PyCUDA_MemoryManager_New( PyTypeObject* type, PyObject* args, PyObject* kwds )
+{
+	printf(LOG_PY_UTILS "PyCUDA_MemoryManager_New()\n");
+
+	// allocate a new container
+	PyCUDA_MemoryManager_Object* self = (PyCUDA_MemoryManager_Object*)type->tp_alloc(type, 0);
+
+	if( !self )
+	{
+		PyErr_SetString(PyExc_MemoryError, LOG_PY_UTILS "PyCUDA_MemoryManager_Object tp_alloc() failed to allocate a new object");
+		return NULL;
+	}
+
+	self->mm = NULL;
+	return (PyObject*)self;
+}
+
+static void PyCUDA_MemoryManager_Dealloc( PyCUDA_MemoryManager_Object* self )
+{
+	printf(LOG_PY_UTILS "PyCUDA_MemoryManager_Object_Dealloc()\n");
+
+	// free the font
+	if( self->mm != NULL )
+	{
+		delete self->mm;
+		self->mm = NULL;
+	}
+	// free the container
+	Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyObject*  PyCUDA_MemoryManager_UsedPointers(PyCUDA_MemoryManager_Object* self )
+{
+	printf(LOG_PY_UTILS "PyCUDA_MemoryManager_UsedPointers()\n");
+
+	// free the font
+	if( self->mm->usedPointerList != NULL )
+	{
+		int ptrs = self->mm->usedPointerList->size();
+		printf(LOG_PY_UTILS "%d\n", ptrs);
+		return PyLong_FromLong(ptrs);
+	}
+
+	return PyLong_FromLong(0);
+}
+
+static PyObject* PyCUDA_MemoryManager_AddPointer(PyCUDA_MemoryManager_Object* self, void* ptr)
+{
+	printf(LOG_PY_UTILS "PyCUDA_MemoryManager_AddPointer()\n");
+
+	// free the font
+	if( self->mm != NULL )
+	{
+		printf(LOG_PY_UTILS "Adding pointer to list\n");
+		self->mm->addUsedPointer(ptr);
+		return PyLong_FromLong(0);
+	}
+
+	return PyLong_FromLong(-1);
+}
 
 //-------------------------------------------------------------------------------
 // PyCUDA_FreeMalloc
@@ -33,6 +127,7 @@ void PyCUDA_FreeMalloc( PyObject* capsule )
 	printf(LOG_PY_UTILS "freeing cudaMalloc memory\n");
 
 	void* ptr = PyCapsule_GetPointer(capsule, CUDA_MALLOC_MEMORY_CAPSULE);
+	// PyCUDA_MemoryManager_AddPointer(ptr);
 
 	if( !ptr )
 	{
@@ -49,7 +144,7 @@ void PyCUDA_FreeMalloc( PyObject* capsule )
 
 
 // PyCUDA_RegisterMemory
-PyObject* PyCUDA_RegisterMemory( void* gpuPtr, bool freeOnDelete )
+PyObject* PyCUDA_RegisterMemory( void* gpuPtr, bool freeOnDelete)
 {
 	if( !gpuPtr )
 	{
@@ -63,7 +158,7 @@ PyObject* PyCUDA_RegisterMemory( void* gpuPtr, bool freeOnDelete )
 	if( !capsule )
 	{
 		PyErr_SetString(PyExc_Exception, LOG_PY_UTILS "RegisterMemory() failed to create PyCapsule container");
-		
+
 		if( freeOnDelete )
 			CUDA(cudaFree(gpuPtr));
 
@@ -73,10 +168,10 @@ PyObject* PyCUDA_RegisterMemory( void* gpuPtr, bool freeOnDelete )
 	return capsule;
 }
 
-
 // PyCUDA_Malloc
-PyObject* PyCUDA_Malloc( PyObject* self, PyObject* args )
+PyObject* PyCUDA_Malloc( PyCUDA_MemoryManager_Object* self, PyObject* args )
 {
+
 	int size = 0;
 
 	if( !PyArg_ParseTuple(args, "i", &size) )
@@ -84,7 +179,7 @@ PyObject* PyCUDA_Malloc( PyObject* self, PyObject* args )
 		PyErr_SetString(PyExc_Exception, LOG_PY_UTILS "cudaMalloc() failed to parse size argument");
 		return NULL;
 	}
-		
+
 	if( size <= 0 )
 	{
 		PyErr_SetString(PyExc_Exception, LOG_PY_UTILS "cudaMalloc() requested size is negative or zero");
@@ -118,11 +213,19 @@ void PyCUDA_FreeMapped( PyObject* capsule )
 		return;
 	}
 
-	if( CUDA_FAILED(cudaFreeHost(ptr)) )
-	{
-		printf(LOG_PY_UTILS "failed to free CUDA mapped memory with cudaFreeHost()\n");
-		return;
-	}
+	memoryManager::getInstance().addUsedPointer(ptr);
+	memoryManager::getInstance().deallocatePointers();
+	
+	// printf("%lu\n", memoryManager::getInstance().usedPointerList->size());
+
+	// if( CUDA_FAILED(cudaFreeHost(ptr)) )
+	// {
+	// 	printf(LOG_PY_UTILS "failed to free CUDA mapped memory with cudaFreeHost()\n");
+	// 	return;
+	// }
+
+	return;
+
 }
 
 
@@ -138,7 +241,7 @@ PyObject* PyCUDA_RegisterMappedMemory( void* cpuPtr, void* gpuPtr, bool freeOnDe
 	if( cpuPtr != gpuPtr )
 	{
 		PyErr_SetString(PyExc_Exception, LOG_PY_UTILS "RegisterMappedMemory() pointers don't match");
-		
+
 		if( freeOnDelete )
 			CUDA(cudaFreeHost(cpuPtr));
 
@@ -151,7 +254,7 @@ PyObject* PyCUDA_RegisterMappedMemory( void* cpuPtr, void* gpuPtr, bool freeOnDe
 	if( !capsule )
 	{
 		PyErr_SetString(PyExc_Exception, LOG_PY_UTILS "RegisterMappedMemory() failed to create PyCapsule container");
-		
+
 		if( freeOnDelete )
 			CUDA(cudaFreeHost(cpuPtr));
 
@@ -163,7 +266,7 @@ PyObject* PyCUDA_RegisterMappedMemory( void* cpuPtr, void* gpuPtr, bool freeOnDe
 
 
 // PyCUDA_AllocMapped
-PyObject* PyCUDA_AllocMapped( PyObject* self, PyObject* args )
+PyObject* PyCUDA_AllocMapped( PyCUDA_MemoryManager_Object* self, PyObject* args )
 {
 	int size = 0;
 
@@ -172,7 +275,7 @@ PyObject* PyCUDA_AllocMapped( PyObject* self, PyObject* args )
 		PyErr_SetString(PyExc_Exception, LOG_PY_UTILS "cudaAllocMapped() failed to parse size argument");
 		return NULL;
 	}
-		
+
 	if( size <= 0 )
 	{
 		PyErr_SetString(PyExc_Exception, LOG_PY_UTILS "cudaAllocMapped() requested size is negative or zero");
@@ -194,7 +297,7 @@ PyObject* PyCUDA_AllocMapped( PyObject* self, PyObject* args )
 
 
 // PyCUDA_DeviceSynchronize
-PyObject* PyCUDA_DeviceSynchronize( PyObject* self )
+PyObject* PyCUDA_DeviceSynchronize( PyCUDA_MemoryManager_Object* self )
 {
 	CUDA(cudaDeviceSynchronize());
 	Py_RETURN_NONE;
@@ -202,7 +305,7 @@ PyObject* PyCUDA_DeviceSynchronize( PyObject* self )
 
 
 // PyCUDA_AdaptFontSize
-PyObject* PyCUDA_AdaptFontSize( PyObject* self, PyObject* args )
+PyObject* PyCUDA_AdaptFontSize( PyCUDA_MemoryManager_Object* self, PyObject* args )
 {
 	int dim = 0;
 
@@ -211,7 +314,7 @@ PyObject* PyCUDA_AdaptFontSize( PyObject* self, PyObject* args )
 		PyErr_SetString(PyExc_Exception, LOG_PY_UTILS "adaptFontSize() failed to parse size argument");
 		return NULL;
 	}
-		
+
 	if( dim <= 0 )
 	{
 		PyErr_SetString(PyExc_Exception, LOG_PY_UTILS "adaptFontSize() requested size is negative or zero");
@@ -223,12 +326,19 @@ PyObject* PyCUDA_AdaptFontSize( PyObject* self, PyObject* args )
 
 //-------------------------------------------------------------------------------
 
-static PyMethodDef pyCUDA_Functions[] = 
+static PyTypeObject pyCUDA_MemoryManager_Type =
+{
+    PyVarObject_HEAD_INIT(NULL, 0)
+};
+
+static PyMethodDef pyCUDA_Functions[] =
 {
 	{ "cudaMalloc", (PyCFunction)PyCUDA_Malloc, METH_VARARGS, "Allocated CUDA memory on the GPU with cudaMalloc()" },
 	{ "cudaAllocMapped", (PyCFunction)PyCUDA_AllocMapped, METH_VARARGS, "Allocate CUDA ZeroCopy mapped memory" },
 	{ "cudaDeviceSynchronize", (PyCFunction)PyCUDA_DeviceSynchronize, METH_NOARGS, "Wait for the GPU to complete all work" },
 	{ "adaptFontSize", (PyCFunction)PyCUDA_AdaptFontSize, METH_VARARGS, "Determine an appropriate font size for the given image dimension" },
+	{ "usedPointers", (PyCFunction)PyCUDA_MemoryManager_UsedPointers, METH_NOARGS, "Returns the number of tracked pointers" },
+	{ "addPointer", (PyCFunction)PyCUDA_MemoryManager_AddPointer, METH_VARARGS, "Add a tracked pointers" },
 	{NULL}  /* Sentinel */
 };
 
@@ -279,17 +389,17 @@ typedef struct {
 static PyObject* PyFont_New( PyTypeObject *type, PyObject *args, PyObject *kwds )
 {
 	printf(LOG_PY_UTILS "PyFont_New()\n");
-	
+
 	// allocate a new container
 	PyFont_Object* self = (PyFont_Object*)type->tp_alloc(type, 0);
-	
+
 	if( !self )
 	{
 		PyErr_SetString(PyExc_MemoryError, LOG_PY_UTILS "cudaFont tp_alloc() failed to allocate a new object");
 		printf(LOG_PY_UTILS "cudaFont tp_alloc() failed to allocate a new object\n");
 		return NULL;
 	}
-	
+
 
 	#define INIT_COLOR(color, r, g, b)		\
 		self->color = Py_BuildValue("(ffff)", r, g, b, 255.0);	\
@@ -305,7 +415,7 @@ static PyObject* PyFont_New( PyTypeObject *type, PyObject *args, PyObject *kwds 
 			return NULL;								\
 		}
 
-	INIT_COLOR(black,   0.0, 0.0, 0.0);									
+	INIT_COLOR(black,   0.0, 0.0, 0.0);
 	INIT_COLOR(white,   255.0, 255.0, 255.0);
 	INIT_COLOR(gray,	128.0, 128.0, 128.0);
 	INIT_COLOR(brown,	165.0, 42.0, 42.0);
@@ -339,7 +449,7 @@ static PyObject* PyFont_New( PyTypeObject *type, PyObject *args, PyObject *kwds 
 static int PyFont_Init( PyFont_Object* self, PyObject *args, PyObject *kwds )
 {
 	printf(LOG_PY_UTILS "PyFont_Init()\n");
-	
+
 	// parse arguments
 	const char* font_name = NULL;
 	float font_size = 32.0f;
@@ -351,7 +461,7 @@ static int PyFont_Init( PyFont_Object* self, PyObject *args, PyObject *kwds )
 		PyErr_SetString(PyExc_Exception, LOG_PY_UTILS "pyFont.__init()__ failed to parse args tuple");
 		return -1;
 	}
-  
+
 	// create the font
 	cudaFont* font = cudaFont::Create(font_name, font_size);
 
@@ -377,7 +487,7 @@ static void PyFont_Dealloc( PyFont_Object* self )
 		delete self->font;
 		self->font = NULL;
 	}
-	
+
 	// free the color objects
 	Py_XDECREF(self->black);
 	Py_XDECREF(self->white);
@@ -514,18 +624,18 @@ static PyObject* PyFont_OverlayText( PyFont_Object* self, PyObject* args, PyObje
 
 
 //-------------------------------------------------------------------------------
-static PyTypeObject pyFont_Type = 
+static PyTypeObject pyFont_Type =
 {
     PyVarObject_HEAD_INIT(NULL, 0)
 };
 
-static PyMethodDef pyFont_Methods[] = 
+static PyMethodDef pyFont_Methods[] =
 {
 	{ "OverlayText", (PyCFunction)PyFont_OverlayText, METH_VARARGS|METH_KEYWORDS, "Render the font overlay for a given text string"},
 	{NULL}  /* Sentinel */
 };
 
-static PyMemberDef pyFont_Members[] = 
+static PyMemberDef pyFont_Members[] =
 {
 	{ "Black",   T_OBJECT_EX, offsetof(PyFont_Object, black),   0, "Black color tuple"},
 	{ "White",   T_OBJECT_EX, offsetof(PyFont_Object, white),   0, "White color tuple"},
@@ -556,9 +666,34 @@ static PyMemberDef pyFont_Members[] =
 // Register types
 bool PyCUDA_RegisterTypes( PyObject* module )
 {
+	// Register memoryManager object
 	if( !module )
 		return false;
-	
+
+	pyCUDA_MemoryManager_Type.tp_name 	= PY_UTILS_MODULE_NAME ".cudaMM";
+	pyCUDA_MemoryManager_Type.tp_basicsize = sizeof(PyCUDA_MemoryManager_Object);
+	pyCUDA_MemoryManager_Type.tp_flags 	= Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
+	pyCUDA_MemoryManager_Type.tp_base		= NULL;
+	pyCUDA_MemoryManager_Type.tp_methods   = pyCUDA_Functions;
+	pyCUDA_MemoryManager_Type.tp_new 	     = PyCUDA_MemoryManager_New;
+	pyCUDA_MemoryManager_Type.tp_init	     = (initproc)PyCUDA_MemoryManager_Init;
+	pyCUDA_MemoryManager_Type.tp_dealloc	= (destructor)PyCUDA_MemoryManager_Dealloc;
+	pyCUDA_MemoryManager_Type.tp_doc  	= "CUDA memory pointers tracker";
+
+	if( PyType_Ready(&pyCUDA_MemoryManager_Type) < 0 )
+	{
+		printf(LOG_PY_UTILS "cudaFont pyCUDA_MemoryManager_Type() failed\n");
+		return false;
+	}
+
+	Py_INCREF(&pyCUDA_MemoryManager_Type);
+
+	if( PyModule_AddObject(module, "cudaMM", (PyObject*)&pyCUDA_MemoryManager_Type) < 0 )
+	{
+		printf(LOG_PY_UTILS "cudaMM PyModule_AddObject('cudaMM') failed\n");
+		return false;
+	}
+
 	pyFont_Type.tp_name 	= PY_UTILS_MODULE_NAME ".cudaFont";
 	pyFont_Type.tp_basicsize = sizeof(PyFont_Object);
 	pyFont_Type.tp_flags 	= Py_TPFLAGS_DEFAULT | Py_TPFLAGS_BASETYPE;
@@ -568,15 +703,15 @@ bool PyCUDA_RegisterTypes( PyObject* module )
 	pyFont_Type.tp_init	     = (initproc)PyFont_Init;
 	pyFont_Type.tp_dealloc	= (destructor)PyFont_Dealloc;
 	pyFont_Type.tp_doc  	= "Bitmap font overlay rendering with CUDA";
-	 
+
 	if( PyType_Ready(&pyFont_Type) < 0 )
 	{
 		printf(LOG_PY_UTILS "cudaFont PyType_Ready() failed\n");
 		return false;
 	}
-	
+
 	Py_INCREF(&pyFont_Type);
-    
+
 	if( PyModule_AddObject(module, "cudaFont", (PyObject*)&pyFont_Type) < 0 )
 	{
 		printf(LOG_PY_UTILS "cudaFont PyModule_AddObject('cudaFont') failed\n");
@@ -584,4 +719,3 @@ bool PyCUDA_RegisterTypes( PyObject* module )
 	}
 	return true;
 }
-
